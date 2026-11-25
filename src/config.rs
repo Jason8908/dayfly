@@ -36,6 +36,7 @@ fn first_existing<'a>(
         if exists(path)? {
             return Ok(Some(path.to_path_buf()));
         }
+        tracing::debug!(path = %path.display(), "config file not found");
     }
     Ok(None)
 }

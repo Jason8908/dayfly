@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod config;
+pub mod logging;
 
 use std::io::{self, Write};
 
