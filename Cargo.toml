@@ -7,6 +7,8 @@ license = "MIT"
 repository = "https://github.com/Jason8908/dayfly"
 
 [dependencies]
+anyhow = "1.0.105"
+thiserror = "2.0.21"
 
 [lints.rust]
 unsafe_code = "forbid"
