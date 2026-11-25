@@ -1,0 +1,59 @@
+# Example dayfly configuration.
+#
+# dayfly reads the file given with --config, or else ./dayfly.toml, or else
+# /etc/dayfly/dayfly.toml. Run `dayfly config check` to validate it.
+#
+# Relative paths in this file are resolved against the directory that holds it.
+
+[github]
+# How dayfly authenticates to GitHub: "token" or "app".
+# Credentials never go in this file. Name the environment variable or the file
+# that holds them instead.
+auth = "token"
+# A fine-grained personal access token, read from this environment variable...
+token_env = "DAYFLY_GITHUB_TOKEN"
+# ...or from this file. Set one of the two.
+# token_file = "/etc/dayfly/github-token"
+
+# To authenticate as a GitHub App instead:
+# auth = "app"
+# client_id = "Iv23liExampleClientId"
+# private_key_file = "/etc/dayfly/github-app.pem"
+# # or: private_key_env = "DAYFLY_GITHUB_APP_KEY"
+
+# Each [[pool]] keeps a set of single-use runners for one repository or
+# organization.
+[[pool]]
+# Lowercase letters, digits and hyphens, at most 32 characters. Unique.
+name = "linux"
+# Set either repository = "owner/name" or organization = "name".
+# Personal accounts can only register runners for a repository.
+repository = "octo-org/octo-repo"
+# Labels that jobs target with `runs-on`. Case-insensitive, 1 to 100 of them.
+labels = ["self-hosted", "linux", "x64"]
+# Where each runner runs. Only "docker" is supported for now.
+backend = "docker"
+# The runner image to start for each job.
+image = "ghcr.io/octo-org/dayfly-runner:latest"
+# How many runners to keep ready.
+size = 2
+
+# Optional limits for each runner. Leave a key out for no limit.
+[pool.limits]
+cpus = 2
+# Sizes take a whole number and KiB, MiB, GiB or TiB.
+memory = "4GiB"
+pids = 1024
+disk = "20GiB"
+
+[[pool]]
+name = "org-large"
+organization = "octo-org"
+labels = ["self-hosted", "linux", "x64", "large"]
+backend = "docker"
+image = "ghcr.io/octo-org/dayfly-runner:latest"
+size = 1
+
+# Optional. Leave this section out to turn metrics off.
+[metrics]
+listen = "127.0.0.1:9180"

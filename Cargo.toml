@@ -10,6 +10,7 @@ repository = "https://github.com/Jason8908/dayfly"
 anyhow = "1.0.105"
 clap = { version = "4.6.10", features = ["derive"] }
 thiserror = "2.0.21"
+toml = { version = "1.2.3", default-features = false, features = ["std", "parse"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 

@@ -3,6 +3,8 @@ use std::io;
 use std::process::Command;
 use std::str;
 
+const EXAMPLE_CONFIG: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/dayfly.toml");
+
 fn dayfly() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_dayfly"));
     command.env_remove("RUST_LOG");
@@ -72,7 +74,7 @@ fn unknown_flag_prints_usage_and_exits_with_2() {
 #[test]
 fn config_check_finds_dayfly_toml_in_the_working_directory() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("dayfly.toml"), "").unwrap();
+    fs::copy(EXAMPLE_CONFIG, dir.path().join("dayfly.toml")).unwrap();
 
     let output = dayfly()
         .args(["config", "check"])
@@ -82,7 +84,83 @@ fn config_check_finds_dayfly_toml_in_the_working_directory() {
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert_eq!(output.status.code(), Some(0), "{stderr}");
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "./dayfly.toml\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with("./dayfly.toml is valid\n"), "{stdout}");
+}
+
+#[test]
+fn config_check_summarizes_the_example_config() {
+    let output = dayfly()
+        .args(["config", "check", "--config", EXAMPLE_CONFIG])
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!(
+            "{EXAMPLE_CONFIG} is valid
+
+github
+  auth: token from environment variable DAYFLY_GITHUB_TOKEN
+
+pool linux
+  scope: repository octo-org/octo-repo
+  labels: self-hosted, linux, x64
+  backend: docker
+  image: ghcr.io/octo-org/dayfly-runner:latest
+  size: 2
+  limits: cpus 2, memory 4GiB, pids 1024, disk 20GiB
+
+pool org-large
+  scope: organization octo-org
+  labels: self-hosted, linux, x64, large
+  backend: docker
+  image: ghcr.io/octo-org/dayfly-runner:latest
+  size: 1
+  limits: none
+
+metrics
+  listen: 127.0.0.1:9180
+"
+        )
+    );
+}
+
+#[test]
+fn config_check_reports_every_problem_with_its_location() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("dayfly.toml");
+    fs::write(
+        &path,
+        "[github]\nauth = \"token\"\ntoken_env = \"T\"\n\n\
+         [[pool]]\nname = \"Linux\"\nrepository = \"octo/app\"\nlabels = [\"x64\"]\n\
+         backend = \"podman\"\nimage = \"runner\"\nsize = 0\ncolour = \"red\"\n",
+    )
+    .unwrap();
+
+    let output = dayfly()
+        .args(["config", "check", "--config"])
+        .arg(&path)
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    let path = path.display();
+    assert_eq!(
+        stderr,
+        format!(
+            "error: failed to run dayfly: failed to load the config file: `{path}` is invalid:
+  {path}:6:8: `pool[0].name`: invalid pool name `Linux`: must contain only lowercase ASCII letters, digits and hyphens
+  {path}:9:11: `pool[0].backend`: unsupported value `podman`, expected `docker`
+  {path}:11:8: `pool[0].size`: must be from 1 to 4294967295
+  {path}:12:1: `pool[0].colour`: unknown key, expected one of `name`, `repository`, `organization`, `labels`, `backend`, `image`, `size`, `limits`
+"
+        )
+    );
+    assert_eq!(output.stdout, b"");
 }
 
 #[test]

@@ -13,6 +13,8 @@ pub enum RunError {
     Output(#[source] io::Error),
     #[error("failed to locate the config file")]
     LocateConfig(#[from] config::LocateError),
+    #[error("failed to load the config file")]
+    LoadConfig(#[from] config::LoadError),
 }
 
 pub fn run(cli: Cli, mut output: impl Write) -> Result<(), RunError> {
@@ -20,7 +22,8 @@ pub fn run(cli: Cli, mut output: impl Write) -> Result<(), RunError> {
         Command::Run => unimplemented!("dayfly run"),
         Command::Config(ConfigCommand::Check) => {
             let path = config::locate(cli.config)?;
-            writeln!(output, "{}", path.display())
+            let config = config::load(&path)?;
+            write!(output, "{} is valid\n\n{config}", path.display())
         }
         Command::Version => writeln!(output, "dayfly {}", env!("CARGO_PKG_VERSION")),
     }
