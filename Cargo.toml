@@ -8,7 +8,11 @@ repository = "https://github.com/Jason8908/dayfly"
 
 [dependencies]
 anyhow = "1.0.105"
+clap = { version = "4.6.10", features = ["derive"] }
 thiserror = "2.0.21"
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [lints.rust]
 unsafe_code = "forbid"

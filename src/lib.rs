@@ -1,25 +1,42 @@
+pub mod cli;
+pub mod config;
+
 use std::io::{self, Write};
+
+use cli::{Cli, Command, ConfigCommand};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RunError {
     #[error("failed to write output")]
     Output(#[source] io::Error),
+    #[error("failed to locate the config file")]
+    LocateConfig(#[from] config::LocateError),
 }
 
-pub fn run(mut output: impl Write) -> Result<(), RunError> {
-    writeln!(output, "dayfly {}", env!("CARGO_PKG_VERSION")).map_err(RunError::Output)
+pub fn run(cli: Cli, mut output: impl Write) -> Result<(), RunError> {
+    match cli.command {
+        Command::Run => unimplemented!("dayfly run"),
+        Command::Config(ConfigCommand::Check) => {
+            let path = config::locate(cli.config)?;
+            writeln!(output, "{}", path.display())
+        }
+        Command::Version => writeln!(output, "dayfly {}", env!("CARGO_PKG_VERSION")),
+    }
+    .map_err(RunError::Output)
 }
 
 #[cfg(test)]
 mod tests {
+    use clap::Parser as _;
+
     use super::*;
 
     #[test]
-    fn prints_the_version() {
+    fn version_prints_the_version() {
         let mut output = Vec::new();
 
-        run(&mut output).unwrap();
+        run(Cli::parse_from(["dayfly", "version"]), &mut output).unwrap();
 
         assert_eq!(
             String::from_utf8(output).unwrap(),
