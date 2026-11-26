@@ -1,8 +1,13 @@
 #[cfg(test)]
 mod fake;
+mod permissions;
 mod retry;
 
+use std::env::{self, VarError};
 use std::fmt;
+use std::fs;
+use std::io;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
@@ -11,6 +16,8 @@ use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use crate::config::{CredentialSource, Scope};
+pub use permissions::{AccessError, Denial};
 use retry::{Cause, Throttle};
 
 const API_URL: &str = "https://api.github.com";
@@ -55,6 +62,58 @@ impl FromStr for Token {
         value.set_sensitive(true);
         Ok(Self(value))
     }
+}
+
+impl Token {
+    pub fn load(source: &CredentialSource) -> Result<Self, LoadTokenError> {
+        Self::load_with(source, |name| env::var(name))
+    }
+
+    fn load_with(
+        source: &CredentialSource,
+        var: impl FnOnce(&str) -> Result<String, VarError>,
+    ) -> Result<Self, LoadTokenError> {
+        let secret = match source {
+            CredentialSource::Env(name) => var(name).map_err(|error| match error {
+                VarError::NotPresent => LoadTokenError::EnvMissing(name.clone()),
+                VarError::NotUnicode(_) => LoadTokenError::EnvNotUnicode(name.clone()),
+            })?,
+            CredentialSource::File(path) => {
+                fs::read_to_string(path).map_err(|error| LoadTokenError::Read {
+                    path: path.clone(),
+                    source: error,
+                })?
+            }
+        };
+        secret
+            .trim_ascii()
+            .parse()
+            .map_err(|reason| LoadTokenError::Invalid {
+                origin: source.clone(),
+                reason,
+            })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum LoadTokenError {
+    #[error("environment variable `{0}` is not set")]
+    EnvMissing(String),
+    #[error("environment variable `{0}` is not valid UTF-8")]
+    EnvNotUnicode(String),
+    #[error("failed to read `{}`", .path.display())]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("token from {origin} is invalid")]
+    Invalid {
+        origin: CredentialSource,
+        #[source]
+        reason: TokenError,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +230,13 @@ impl Client {
             headers,
             body,
         })
+    }
+}
+
+fn runners_path(scope: &Scope) -> String {
+    match scope {
+        Scope::Repository(repository) => format!("/repos/{repository}/actions/runners"),
+        Scope::Organization(organization) => format!("/orgs/{organization}/actions/runners"),
     }
 }
 
@@ -402,6 +468,114 @@ mod tests {
             assert!(!output.contains(TOKEN), "{output}");
         }
         assert_eq!(format!("{token:?}"), "Token(<redacted>)");
+    }
+
+    fn bearer(token: &Token) -> &str {
+        token.0.to_str().unwrap()
+    }
+
+    fn load_env(value: Result<String, VarError>) -> Result<Token, LoadTokenError> {
+        let source = CredentialSource::Env("DAYFLY_GITHUB_TOKEN".to_owned());
+        Token::load_with(&source, |name| {
+            assert_eq!(name, "DAYFLY_GITHUB_TOKEN");
+            value
+        })
+    }
+
+    fn load_file(contents: &str) -> Result<Token, LoadTokenError> {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        fs::write(file.path(), contents).unwrap();
+        Token::load(&CredentialSource::File(file.path().to_path_buf()))
+    }
+
+    #[test]
+    fn token_loads_from_an_environment_variable() {
+        let token = load_env(Ok(format!("{TOKEN}\r\n"))).unwrap();
+
+        assert_eq!(bearer(&token), format!("Bearer {TOKEN}"));
+    }
+
+    #[test]
+    fn token_loads_from_a_file_without_surrounding_whitespace() {
+        for contents in [
+            TOKEN.to_owned(),
+            format!("{TOKEN}\n"),
+            format!("{TOKEN}\r\n"),
+            format!(" {TOKEN} \n\n"),
+        ] {
+            let token = load_file(&contents).unwrap();
+
+            assert_eq!(bearer(&token), format!("Bearer {TOKEN}"), "{contents:?}");
+        }
+    }
+
+    #[test]
+    fn unset_environment_variable_is_named() {
+        let source = CredentialSource::Env("DAYFLY_TEST_UNSET_GITHUB_TOKEN".to_owned());
+
+        let error = Token::load(&source).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "environment variable `DAYFLY_TEST_UNSET_GITHUB_TOKEN` is not set"
+        );
+    }
+
+    #[test]
+    fn non_unicode_environment_variable_is_named_without_its_value() {
+        let error = load_env(Err(VarError::NotUnicode(TOKEN.into()))).unwrap_err();
+
+        fake::assert_no_token(&error);
+        assert_eq!(
+            error.to_string(),
+            "environment variable `DAYFLY_GITHUB_TOKEN` is not valid UTF-8"
+        );
+    }
+
+    #[test]
+    fn missing_token_file_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("github-token");
+
+        let error = Token::load(&CredentialSource::File(path.clone())).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!("failed to read `{}`", path.display())
+        );
+        assert_matches!(
+            error,
+            LoadTokenError::Read { source, .. } if source.kind() == io::ErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn blank_token_file_is_rejected_as_empty() {
+        assert_matches!(
+            load_file(" \n"),
+            Err(LoadTokenError::Invalid {
+                reason: TokenError::Empty,
+                ..
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_token_error_names_the_source_but_not_the_value() {
+        let error = load_env(Ok(format!("{TOKEN} {TOKEN}"))).unwrap_err();
+
+        fake::assert_no_token(&error);
+        assert_eq!(
+            error.to_string(),
+            "token from environment variable DAYFLY_GITHUB_TOKEN is invalid"
+        );
+        assert_matches!(
+            error,
+            LoadTokenError::Invalid {
+                reason: TokenError::InvalidCharacter,
+                ..
+            }
+        );
     }
 
     #[tokio::test]

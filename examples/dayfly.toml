@@ -10,7 +10,10 @@
 # Credentials never go in this file. Name the environment variable or the file
 # that holds them instead.
 auth = "token"
-# A fine-grained personal access token, read from this environment variable...
+# A fine-grained personal access token from an admin of each repository and
+# organization. Set its "Administration" repository permission (for repository
+# pools) and "Self-hosted runners" organization permission (for organization
+# pools) to "Read and write". It is read from this environment variable...
 token_env = "DAYFLY_GITHUB_TOKEN"
 # ...or from this file. Set one of the two.
 # token_file = "/etc/dayfly/github-token"
