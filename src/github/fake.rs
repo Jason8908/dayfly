@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use wiremock::matchers::{header, method, path};
-use wiremock::{Mock, MockBuilder, MockServer, ResponseTemplate};
+use wiremock::{Mock, MockBuilder, MockServer, Request, ResponseTemplate};
 
 use super::{API_VERSION, API_VERSION_HEADER, Client, MEDIA_TYPE, USER_AGENT, retry};
 
@@ -28,6 +28,10 @@ impl GitHub {
 
     pub(super) async fn mount(&self, mock: Mock) {
         mock.mount(&self.server).await;
+    }
+
+    pub(super) async fn requests(&self) -> Vec<Request> {
+        self.server.received_requests().await.unwrap()
     }
 }
 
@@ -62,9 +66,13 @@ pub(super) fn error(status: u16, message: &str) -> ResponseTemplate {
 }
 
 pub(super) fn assert_no_token(error: &(dyn Error + 'static)) {
+    assert_secret_absent(error, TOKEN);
+}
+
+pub(super) fn assert_secret_absent(error: &(dyn Error + 'static), secret: &str) {
     let chain: Vec<String> = iter::successors(Some(error), |&error| error.source())
         .map(ToString::to_string)
         .collect();
     let output = format!("{error:?}\n{}", chain.join("\n"));
-    assert!(!output.contains(TOKEN), "{output}");
+    assert!(!output.contains(secret), "{output}");
 }

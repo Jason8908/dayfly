@@ -2,6 +2,7 @@
 mod fake;
 mod permissions;
 mod retry;
+mod runners;
 
 use std::env::{self, VarError};
 use std::fmt;
@@ -19,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{CredentialSource, Scope};
 pub use permissions::{AccessError, Denial};
 use retry::{Cause, Throttle};
+pub use runners::{JitConfig, JitRunner, NewRunner, RunnerId, RunnerName};
 
 const API_URL: &str = "https://api.github.com";
 const API_VERSION: &str = "2026-03-10";
