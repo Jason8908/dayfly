@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{CredentialSource, Scope};
 pub use permissions::{AccessError, Denial};
 use retry::{Cause, Throttle};
-pub use runners::{JitConfig, JitRunner, NewRunner, RunnerId, RunnerName};
+pub use runners::{JitConfig, JitRunner, NewRunner, Runner, RunnerId, RunnerName, RunnerStatus};
 
 const API_URL: &str = "https://api.github.com";
 const API_VERSION: &str = "2026-03-10";
