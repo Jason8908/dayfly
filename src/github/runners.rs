@@ -59,7 +59,7 @@ impl fmt::Display for RunnerId {
 pub struct RunnerName(String);
 
 impl RunnerName {
-    fn generate(pool: &PoolName, instance: &instance::Id) -> Self {
+    pub(crate) fn generate(pool: &PoolName, instance: &instance::Id) -> Self {
         let suffix: String =
             iter::repeat_with(|| char::from(NAME_ALPHABET[fastrand::usize(..NAME_ALPHABET.len())]))
                 .take(NAME_SUFFIX_LEN)
